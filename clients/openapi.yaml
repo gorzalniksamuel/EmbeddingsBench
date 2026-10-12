@@ -1,0 +1,137 @@
+openapi: 3.0.3
+info:
+  title: EmbeddingsBench inference API
+  version: "1.0"
+  description: >
+    Predictions from EmbeddingsBench registry models (label, confidence, top-k, distribution) and embeddings from
+    jinaai/jina-embeddings-v5-text-small-classification. Served by web/inference.py. When the service runs with
+    EB_API_KEY, every request needs "Authorization: Bearer <key>".
+servers:
+  - url: http://localhost:8096
+security:
+  - bearer: []
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Device and configuration
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Health"}}}}
+        "401": {$ref: "#/components/responses/Error"}
+  /v1/models:
+    get:
+      operationId: listModels
+      summary: Ready registry models
+      responses:
+        "200":
+          description: OK
+          content: {application/json: {schema: {type: object, required: [models], properties: {models: {type: array, items: {$ref: "#/components/schemas/ModelInfo"}}}}}}
+        "401": {$ref: "#/components/responses/Error"}
+  /v1/predict:
+    post:
+      operationId: predict
+      summary: Classify texts or embeddings with a registry model
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/PredictRequest"}}}
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/PredictResponse"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+  /v1/embeddings:
+    post:
+      operationId: embed
+      summary: 'OpenAI-compatible embeddings (L2-normalised, 1,024 dimensions, "Document: " prompt)'
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/EmbeddingsRequest"}}}
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/EmbeddingsResponse"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
+  responses:
+    Error:
+      description: Error
+      content: {application/json: {schema: {type: object, required: [error], properties: {error: {type: string}}}}}
+  schemas:
+    Health:
+      type: object
+      properties:
+        status: {type: string, example: ok}
+        device: {type: object, additionalProperties: true}
+        embed_url: {type: string, nullable: true}
+    ModelInfo:
+      type: object
+      required: [model, name, version, method, dataset, input]
+      properties:
+        model: {type: string, example: "banking-logreg:v1"}
+        name: {type: string}
+        version: {type: integer}
+        method: {type: string, example: logreg}
+        dataset: {type: string}
+        input: {type: string, enum: [embeddings, texts, "embeddings+texts"]}
+        stage: {type: string, nullable: true}
+        test_accuracy: {type: number, nullable: true}
+        description: {type: string}
+    PredictRequest:
+      type: object
+      required: [model]
+      properties:
+        model: {type: string, description: "name (latest ready version) or name:version", example: banking-logreg}
+        texts: {type: array, items: {type: string}}
+        embeddings: {type: array, items: {type: array, items: {type: number, format: float}, minItems: 1024, maxItems: 1024}}
+        top_k: {type: integer, default: 3}
+        distribution: {type: boolean, default: false, description: include the probability of every class}
+    LabelScore:
+      type: object
+      required: [label, label_id, probability]
+      properties:
+        label: {type: string}
+        label_id: {type: string}
+        probability: {type: number}
+    Prediction:
+      type: object
+      required: [label, label_id, index, confidence, top_k]
+      properties:
+        label: {type: string, description: readable class name}
+        label_id: {type: string, description: class id in the dataset}
+        index: {type: integer}
+        confidence: {type: number}
+        top_k: {type: array, items: {$ref: "#/components/schemas/LabelScore"}}
+        distribution: {type: object, additionalProperties: {type: number}}
+    PredictResponse:
+      type: object
+      required: [model, method, dataset, input, scores, classes, predictions]
+      properties:
+        model: {type: string}
+        method: {type: string}
+        dataset: {type: string}
+        input: {type: string}
+        scores: {type: string, description: what the probabilities are (calibrated probabilities or softmaxed scores)}
+        classes: {type: integer}
+        predictions: {type: array, items: {$ref: "#/components/schemas/Prediction"}}
+    EmbeddingsRequest:
+      type: object
+      required: [input]
+      properties:
+        input: {oneOf: [{type: string}, {type: array, items: {type: string}}]}
+        max_tokens: {type: integer, default: 2048}
+    EmbeddingsResponse:
+      type: object
+      required: [data, model]
+      properties:
+        object: {type: string, example: list}
+        model: {type: string}
+        data:
+          type: array
+          items:
+            type: object
+            required: [index, embedding]
+            properties:
+              object: {type: string, example: embedding}
+              index: {type: integer}
+              embedding: {type: array, items: {type: number, format: float}}

@@ -1,0 +1,18 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+# generated working data (large or containing dataset texts)
+data/
+embeddings/
+registry/
+site/
+hf/
+models/*/
+results/predictions/
+results/.lock
+*.log
+*.tmp
+clients/dotnet/**/bin/
+clients/dotnet/**/obj/

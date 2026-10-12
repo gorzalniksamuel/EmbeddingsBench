@@ -1,0 +1,15 @@
+# systemd unit for the inference API (predictions + embeddings). Set EB_API_KEY in .env before exposing it.
+#   sudo cp deploy/embeddingsbench-inference.service /etc/systemd/system/ && sudo systemctl enable --now embeddingsbench-inference
+[Unit]
+Description=EmbeddingsBench inference API
+After=network-online.target
+
+[Service]
+User=bench
+WorkingDirectory=/opt/embeddingsbench
+EnvironmentFile=/opt/embeddingsbench/.env
+ExecStart=/opt/embeddingsbench/.venv/bin/python web/inference.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

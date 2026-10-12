@@ -1,0 +1,16 @@
+# systemd unit for the dashboard + registry API + job worker.
+# Adjust User and the paths (here /opt/embeddingsbench), then:
+#   sudo cp deploy/embeddingsbench.service /etc/systemd/system/ && sudo systemctl enable --now embeddingsbench
+[Unit]
+Description=EmbeddingsBench (dashboard, model registry API, job worker)
+After=network-online.target
+
+[Service]
+User=bench
+WorkingDirectory=/opt/embeddingsbench
+EnvironmentFile=/opt/embeddingsbench/.env
+ExecStart=/opt/embeddingsbench/.venv/bin/python web/app.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
