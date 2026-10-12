@@ -266,6 +266,55 @@ def imbalance_ratio(meta):
     return f"{max(counts) / min(counts):.0f}:1" if counts else "–"
 
 
+def reliability(R, names, out):
+    rows = [n for n in names if R[n].get("reliability")]
+    if not rows:
+        return None
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.6))
+    methods = ["logreg", "mlp_tuned", "ensemble", "finetune", "ft_ensemble", "gbert"]
+    for i, m in enumerate(methods):
+        v = [100 * R[n]["reliability"]["calibration"][m]["ece"] for n in rows if m in R[n]["reliability"].get("calibration", {})]
+        if v:
+            axes[0].scatter(v, [i] * len(v), s=18, color=COLORS[m], alpha=0.6, zorder=3)
+            axes[0].scatter([np.median(v)], [i], s=90, marker="|", color="#12151a", zorder=4)
+    axes[0].set_yticks(range(len(methods)), [NAMES[m] for m in methods])
+    axes[0].set_xscale("symlog", linthresh=10)
+    axes[0].set_xlabel("expected calibration error (%, per dataset; bar = median)")
+    axes[0].set_title("How well does the confidence match accuracy?")
+    for m in ("logreg", "finetune"):
+        xs, ys = [], []
+        for n in rows:
+            c = R[n]["reliability"].get("calibration", {}).get(m)
+            if c:
+                xs.append(100 * c["accuracy"]); ys.append(100 * c["automate_at"]["0.95"]["coverage"])
+        axes[1].scatter(xs, ys, s=26, color=COLORS[m], label=NAMES[m], zorder=3)
+    axes[1].plot([50, 100], [0, 100], color="#adb5bd", lw=0.8, ls=":")
+    axes[1].set_xlabel("overall test accuracy (%)")
+    axes[1].set_ylabel("texts automatable at 95 % accuracy (%)")
+    axes[1].set_title("Selective prediction: confident texts only")
+    axes[1].legend(fontsize=7)
+    fig.tight_layout()
+    fig.savefig(out / "reliability.png")
+    plt.close(fig)
+    pct = lambda v: f"{100 * v:.1f}"
+    sig = []
+    for n in rows:
+        bs = R[n]["reliability"]["bootstrap"]
+        b = bs["methods"][bs["best"]]
+        tied = [NAMES.get(m, m) for m, v in bs["methods"].items() if v["tied_with_best"] and m != bs["best"] and m in NAMES]
+        sig.append((short(R[n]["meta"]["title"]), f"{NAMES.get(bs['best'], bs['best'])} {pct(b['accuracy'])} [{pct(b['ci'][0])}–{pct(b['ci'][1])}]",
+                    f"±{50 * (b['ci'][1] - b['ci'][0]):.1f}", ", ".join(tied) or "–"))
+    cal = []
+    for n in rows:
+        c = R[n]["reliability"].get("calibration", {})
+        for m in ("logreg", "finetune"):
+            if m in c:
+                cal.append((short(R[n]["meta"]["title"]), NAMES[m], pct(c[m]["accuracy"]), f"{100 * c[m]['ece']:.1f}",
+                            pct(c[m]["accuracy_at_coverage"]["0.8"]), f"{100 * c[m]['automate_at']['0.95']['coverage']:.0f}",
+                            f"{100 * c[m]['automate_at']['0.99']['coverage']:.0f}"))
+    return sig, cal
+
+
 def md_table(header, rows):
     return "\n".join(["| " + " | ".join(header) + " |", "|" + "---|" * len(header)] + ["| " + " | ".join(map(str, r)) + " |" for r in rows])
 
@@ -284,6 +333,7 @@ def main():
     ft = finetune_gains(R, names, figs)
     imb = imbalance(R, names, figs)
     heads = heads_frozen_vs_finetuned(R, names, figs)
+    rel = reliability(R, names, figs)
     tokens_and_dims(R, names, figs)
     costs(res, figs)
 
@@ -305,6 +355,11 @@ def main():
         parts.append("## Classifiers on frozen vs fine-tuned jina embeddings (test accuracy, %)")
         parts.append(md_table(["Dataset"] + [("FT-emb " if c.startswith("ftemb") else "Frozen " if c in ("knn", "logreg", "svm_rbf", "mlp_tuned") else "") + NAMES[c] for c in cols],
                               [(short(R[n]["meta"]["title"]), *[pct(v.get(c)) for c in cols]) for n, v in heads]))
+    if rel:
+        parts.append("## Significance: best method per dataset with 95 % bootstrap interval")
+        parts.append(md_table(["Dataset", "Best (95 % interval)", "Half-width (pts)", "Statistically tied with the best"], rel[0]))
+        parts.append("## Calibration and selective prediction (%)")
+        parts.append(md_table(["Dataset", "Classifier", "Accuracy", "ECE", "Accuracy on the 80 % most confident", "Automatable at 95 % accuracy", "at 99 %"], rel[1]))
     if imb:
         parts.append("## Class imbalance (accuracy / balanced accuracy / macro-F1 / tail recall, %)")
         for n, rows in imb:

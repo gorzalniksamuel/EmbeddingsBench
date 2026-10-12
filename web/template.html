@@ -84,6 +84,7 @@ td.best { font-weight: 700; }
 #resultsTable td.best { box-shadow: inset 0 0 0 2px var(--best); background: var(--best-soft); border-radius: 6px; }
 #resultsTable td.bestname { color: var(--best); font-weight: 600; }
 #resultsTable .fam-start { border-left: 2px solid var(--line); }
+#resultsTable td.tied:not(.best) { box-shadow: inset 0 0 0 1px var(--best); border-radius: 6px; }
 #resultsTable thead tr.fams th { text-align: center; border-bottom: none; padding-bottom: 2px; white-space: normal; line-height: 1.25; }
 #resultsTable td .via { display: block; font: 400 .7rem var(--f-mono); color: var(--ink-3); }
 .chosen { font-weight: 700; color: var(--good); }
@@ -210,7 +211,7 @@ body.readonly #descForm textarea, body.readonly #descForm input, body.readonly #
     <section class="panel">
       <header>
         <h2>Test results</h2>
-        <p class="note prose">Test scores with settings chosen on validation. Framed: best classifier per dataset. Balanced accuracy averages recall over classes; tail recall averages it over the third of classes with the fewest training examples; top-3 accuracy needs class probabilities ("–" for classifiers that only output a label). Click a row for details.</p>
+        <p class="note prose">Test scores with settings chosen on validation. Framed: best classifier per dataset; thin frame (accuracy): statistically tied with the best (paired bootstrap, 95 %; hover a cell for its interval). Balanced accuracy averages recall over classes; tail recall averages it over the third of classes with the fewest training examples; top-3 accuracy needs class probabilities ("–" for classifiers that only output a label). Click a row for details.</p>
         <p class="note prose" id="runMeta"></p>
       </header>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><span class="eyebrow">Metric</span><div class="seg" id="metricSeg"></div><span class="eyebrow">Columns</span><div class="seg" id="viewSeg"></div></div>
@@ -298,6 +299,17 @@ body.readonly #descForm textarea, body.readonly #descForm input, body.readonly #
         <p class="note prose">Validation accuracy per setting; the selected one (green) is the only one scored on test (it is not refit on train + validation).</p>
       </header>
       <div class="scroll"><table id="selTable"></table></div>
+    </section>
+
+    <section class="panel" id="relPanel" hidden>
+      <header>
+        <h2>Reliability</h2>
+        <p class="note prose">Left: 95 % bootstrap interval of each method's test accuracy (1,000 resamples of the test set); a method is <b>tied with the best</b> when the 95 % interval of its paired accuracy difference to the best method includes 0. Right: calibration and selective prediction for methods with class probabilities: ECE (expected calibration error; 0 = confidence equals accuracy), accuracy when only the most confident x % of texts are classified automatically, and the largest share that can be automated at 95 % / 99 % accuracy (the rest goes to manual review). Ensembles and SVMs output softmaxed scores, not calibrated probabilities.</p>
+      </header>
+      <div class="cols">
+        <div class="scroll"><table id="ciTable"></table></div>
+        <div><div class="scroll"><table id="calTable"></table></div><div id="relDiagram" class="plot" style="min-height:300px"></div></div>
+      </div>
     </section>
 
     <section class="panel" id="dsBvPanel" hidden>
@@ -613,9 +625,10 @@ function renderResultsTable() {
     return `<tr class="link" tabindex="0" data-ds="${n}"><td><b>${esc(short(d.meta.title))}</b><br><span class="note">${(d.meta.lang || "en").toUpperCase()}${d.meta.domain ? " · " + esc(d.meta.domain) : ""}</span></td><td>${d.meta.labels.length}</td>` +
       `<td>${fmt(d.meta.n_train)}<br><span class="note">${fmt(d.meta.n_val)} / ${fmt(d.meta.n_test)}</span></td><td>${L ? fmt(Math.round(L.avg_tokens)) : "–"}</td><td>${L ? fmt(Math.round(L.avg_chars)) : "–"}</td>` +
       cells.map((c, i) => {
-        const cls = [startOf[i] ? "fam-start" : "", c && c.v === best ? "best" : ""].join(" ").trim();
+        const rb = c && key === "accuracy" ? d.reliability?.bootstrap?.methods?.[c.m.k] : null;
+        const cls = [startOf[i] ? "fam-start" : "", c && c.v === best ? "best" : "", rb?.tied_with_best ? "tied" : ""].join(" ").trim();
         if (!c) return `<td class="note ${startOf[i] ? "fam-start" : ""}">${cols[i].members.some(m => d.methods[m.k]) ? "–" : "not run"}</td>`;
-        return `<td class="${cls}">${fmtM(key, c.v)}${byFamily && cols[i].members.length > 1 ? `<span class="via">${esc(c.m.s)}</span>` : ""}</td>`;
+        return `<td class="${cls}"${rb ? ` title="95 % interval ${pct(rb.ci[0])}–${pct(rb.ci[1])}${rb.tied_with_best && c.v !== best ? " · statistically tied with the best" : ""}"` : ""}>${fmtM(key, c.v)}${byFamily && cols[i].members.length > 1 ? `<span class="via">${esc(c.m.s)}</span>` : ""}</td>`;
       }).join("") +
       `<td class="bestname">${[...new Set(cells.filter(c => c && c.v === best).map(c => c.m.s))].join(", ")}</td></tr>`;
   }).join("");
@@ -743,6 +756,31 @@ function renderMatryoshka() {
 }
 
 /* ================= dataset ================= */
+function renderReliability(d) {
+  const rel = d.reliability;
+  $("relPanel").hidden = !rel;
+  if (!rel) return;
+  const bs = rel.bootstrap, rows = Object.entries(bs.methods).filter(([k]) => MK[k]).sort((a, b) => b[1].accuracy - a[1].accuracy);
+  $("ciTable").innerHTML = `<thead><tr><th>Method</th><th>Test accuracy</th><th>95 % interval</th><th>vs best</th></tr></thead><tbody>` +
+    rows.map(([k, v]) => `<tr><td><span class="swatch" style="background:var(${MK[k].c})"></span>${MK[k].s}</td><td class="${k === bs.best ? "best" : ""}">${pct(v.accuracy)}</td>` +
+      `<td>${pct(v.ci[0])}–${pct(v.ci[1])}</td><td>${k === bs.best ? "best" : v.tied_with_best ? "<b>tied</b>" : "−" + (100 * v.diff_to_best).toFixed(1) + " pts"}</td></tr>`).join("") + `</tbody>`;
+  const cal = Object.entries(rel.calibration || {}).filter(([k]) => MK[k]);
+  const auto = (c, t) => c.automate_at[t] ? `${(100 * c.automate_at[t].coverage).toFixed(0)} %${c.automate_at[t].threshold != null ? `<br><span class="note">conf ≥ ${c.automate_at[t].threshold.toFixed(2)}</span>` : ""}` : "–";
+  $("calTable").innerHTML = `<thead><tr><th>Method</th><th>ECE</th><th>Acc. at<br>50 % / 80 % / 90 %</th><th>Automatable<br>at 95 %</th><th>at 99 %</th></tr></thead><tbody>` +
+    cal.map(([k, c]) => `<tr><td><span class="swatch" style="background:var(${MK[k].c})"></span>${MK[k].s}</td><td>${(100 * c.ece).toFixed(1)}</td>` +
+      `<td>${pct(c.accuracy_at_coverage["0.5"])} / ${pct(c.accuracy_at_coverage["0.8"])} / ${pct(c.accuracy_at_coverage["0.9"])}</td><td>${auto(c, "0.95")}</td><td>${auto(c, "0.99")}</td></tr>`).join("") + `</tbody>`;
+  const pick = rel.calibration?.[state.m] ? state.m : cal.length ? cal[0][0] : null;
+  if (!pick) { Plotly.purge("relDiagram"); return; }
+  const c = rel.calibration[pick];
+  Plotly.react("relDiagram", [
+    { type: "scatter", mode: "lines", x: [0, 1], y: [0, 1], line: { color: css("--ink-3"), dash: "dot", width: 1 }, hoverinfo: "skip", name: "perfect" },
+    { type: "scatter", mode: "lines+markers", name: MK[pick].s, x: c.bins.map(b => b.confidence), y: c.bins.map(b => b.accuracy), text: c.bins.map(b => b.count),
+      marker: { size: c.bins.map(b => 5 + 10 * Math.sqrt(b.count / Math.max(...c.bins.map(x => x.count)))), color: css(MK[pick].c) }, line: { color: css(MK[pick].c) },
+      hovertemplate: "confidence %{x:.2f}<br>accuracy %{y:.1%}<br>%{text} texts<extra></extra>" },
+  ], layout({ height: 300, title: { text: `Reliability diagram · ${MK[pick].s}`, font: { size: 13 } }, xaxis: { range: [0, 1], title: { text: "confidence" } },
+    yaxis: { range: [0, 1], tickformat: ".0%", title: { text: "accuracy" } }, showlegend: false, margin: { l: 56, r: 12, t: 40, b: 46 } }), cfg);
+}
+
 function renderDataset() {
   const d = DATA.datasets[state.ds], m = d.methods[state.m], meta = d.meta, labels = labelsOf(d);
   $("dsEyebrow").textContent = `${meta.labels.length} classes · Hugging Face ${meta.hf.join(" / ")}`;
@@ -764,6 +802,7 @@ function renderDataset() {
   renderConfusion(m, labels);
   renderPerClass(m, labels);
   $("dsBvPanel").hidden = !d.mlp_search;
+  renderReliability(d);
   if (d.mlp_search) Plotly.react("dsBv", bvTraces(d, true), { ...bvLayout(380), showlegend: true, legend: { orientation: "h", y: -0.22 } }, cfg);
   Plotly.react("curveOne", curveTraces(d, true), { ...curveLayout(d, 400), showlegend: true, legend: { orientation: "h", y: -0.25 } }, cfg);
 }

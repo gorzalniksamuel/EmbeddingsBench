@@ -74,10 +74,11 @@ def encode_texts(tok, texts, max_tokens, truncation="head"):
     prefix, suffix = special_wrapping(tok)
     budget = max_tokens - len(prefix) - len(suffix)
     out = []
-    for ids in tok(texts, add_special_tokens=False)["input_ids"]:
-        if len(ids) > budget:
-            ids = ids[:budget] if truncation == "head" else ids[:budget - TAIL_TOKENS] + ids[-TAIL_TOKENS:]
-        out.append(prefix + ids + suffix)
+    for start in range(0, len(texts), 256):  # in chunks: full-length ids of long documents need GBs at once
+        for ids in tok(texts[start:start + 256], add_special_tokens=False)["input_ids"]:
+            if len(ids) > budget:
+                ids = ids[:budget] if truncation == "head" else ids[:budget - TAIL_TOKENS] + ids[-TAIL_TOKENS:]
+            out.append(prefix + ids + suffix)
     return out
 
 

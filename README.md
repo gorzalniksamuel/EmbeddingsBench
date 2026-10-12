@@ -21,14 +21,18 @@ Details, figures and recommendations for large and many-class datasets: [report/
 - **Logistic regression is the right default on frozen embeddings.** A tuned MLP is +0.3 points on average,
   an RBF SVM −0.9, kNN −6.5; an automatic architecture search mostly settles on shallow networks.
 - **Combine embeddings with TF-IDF.** The probability ensemble beats LogReg by more than 0.5 points on 13 of 18 datasets (+3.5 points on
-  average) without GPU training, and matches or beats LoRA fine-tuning on 4 of 6.
-- **Best jina-based model: fine-tuned jina + TF-IDF** (+4.8 points over frozen LogReg on average). After fine-tuning,
+  average) without GPU training, and matches or beats LoRA fine-tuning on 6 of 10.
+- **Best jina-based model: fine-tuned jina + TF-IDF** (+3.9 points over frozen LogReg on average). After fine-tuning,
   the classifier on top no longer matters: LogReg, SVM and MLP on the fine-tuned embeddings are within about 1 point of the linear head.
 - **German: gbert-large fine-tuned in full beat LoRA-fine-tuned jina** on all three German datasets (1–3 points).
 - **Many classes (300+): frozen embeddings alone are not enough.** On 342 food categories and 408 patent classes,
   TF-IDF and the ensembles are 4–16 points ahead of LogReg.
 - **Class imbalance:** class weighting raises recall on the rarest third of classes by 3–17 points; the accuracy
   cost grows with the number of classes.
+- **Many top results are statistically tied** (95 % bootstrap intervals of ±0.4–1.9 points; ties on 11 of 18
+  datasets), so differences below about 1 point should not decide the method.
+- **Confidence-based routing works with calibrated models.** With LogReg, 93–100 % of texts on intent, emotion and
+  encyclopedia datasets can be classified automatically at 95 % accuracy; TF-IDF ensemble scores need recalibration.
 - **Input length and size:** 2,048 instead of 512 tokens only helps on long documents; Matryoshka 512 dimensions
   cost about 1 point.
 
@@ -40,15 +44,15 @@ confusion matrices are in [`results/results.json`](results/results.json) and on 
 
 <!-- LEADERBOARD:START -->
 
-Test accuracy (%), results of 12 October 2026 (fine-tuning of the remaining datasets is running). Full analysis, figures and recommendations: [report/REPORT.md](report/REPORT.md) ([PDF](report/REPORT.pdf)).
+Test accuracy (%), results of 12 October 2026 (fine-tuning of the remaining datasets is running). Full analysis, figures and recommendations: [report/REPORT.md](report/REPORT.md) ([PDF](report/REPORT.pdf)). 95 % intervals and statistical ties: dashboard and report.
 
 | Dataset | Lang | Classes | Train | Avg tokens | Zero-shot | kNN | LogReg | RBF SVM | MLP tuned | TF-IDF | TF-IDF char | Emb.+TF-IDF | Emb.+char | Fine-tuned | FT+TF-IDF | gbert-large |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Yahoo! Answers Topics | EN | 10 | 10,000 | 127 | 23.9 | 49.2 | 67.1 | 65.2 | 67.0 | 64.5 | 65.4 | 70.0 | 70.8 | 71.5 | **72.9** | – |
 | DBpedia-14 | EN | 14 | 7,000 | 79 | 67.9 | 98.3 | 98.2 | 98.4 | 98.1 | 96.8 | 96.2 | **98.7** | 98.4 | – | – | – |
 | 20 Newsgroups | EN | 20 | 9,361 | 275 | 12.5 | 46.2 | 65.7 | 64.0 | 65.5 | 71.6 | 72.1 | 73.6 | 75.0 | 72.7 | **75.6** | – |
-| Banking77 | EN | 77 | 8,497 | 15 | 81.6 | 92.7 | 93.0 | 92.8 | 92.8 | 88.5 | 90.0 | **93.4** | 93.1 | – | – | – |
-| CLINC150 (in-scope) | EN | 150 | 15,000 | 11 | 37.9 | 87.4 | 92.6 | 92.9 | 92.9 | 91.3 | 91.6 | **94.8** | 94.6 | – | – | – |
+| Banking77 | EN | 77 | 8,497 | 15 | 81.6 | 92.7 | 93.0 | 92.8 | 92.8 | 88.5 | 90.0 | **93.4** | 93.1 | 92.6 | 92.7 | – |
+| CLINC150 (in-scope) | EN | 150 | 15,000 | 11 | 37.9 | 87.4 | 92.6 | 92.9 | 92.9 | 91.3 | 91.6 | 94.8 | 94.6 | 95.2 | **95.9** | – |
 | arXiv papers (11 categories) | EN | 11 | 8,800 | 4300 | 22.7 | 75.7 | 82.9 | 82.5 | 83.7 | 87.3 | 85.9 | 87.7 | 86.8 | 86.6 | **88.6** | – |
 | AG News | EN | 4 | 10,000 | 54 | 49.9 | 81.7 | 87.2 | 87.3 | 87.3 | 89.0 | 89.2 | 90.4 | **90.8** | – | – | – |
 | LEDGAR contract clauses (LexGLUE) | EN | 100 | 19,092 | 144 | 4.5 | 69.5 | 74.2 | 76.5 | 76.8 | 81.6 | 80.2 | **81.7** | 80.6 | – | – | – |
@@ -57,8 +61,8 @@ Test accuracy (%), results of 12 October 2026 (fine-tuning of the remaining data
 | 10kGNAD German news | DE | 9 | 7,860 | 732 | 22.9 | 74.3 | 84.1 | 82.4 | 83.3 | 87.4 | 87.5 | 88.7 | 87.8 | 88.6 | 89.9 | **91.5** |
 | Amazon reviews DE (stars) | DE | 5 | 10,000 | 65 | 50.7 | 62.1 | 62.2 | 62.2 | 62.2 | 54.6 | 53.5 | 63.0 | 63.3 | 63.6 | 63.7 | **64.7** |
 | MASSIVE intents DE | DE | 60 | 11,514 | 12 | 80.3 | 87.2 | 87.0 | 86.9 | 87.1 | 78.6 | 82.6 | 87.3 | 87.4 | 87.0 | 87.3 | **88.0** |
-| GermEval 2018 offensive language | DE | 4 | 4,258 | 45 | 36.2 | 69.0 | 70.2 | 69.4 | 70.1 | 67.5 | 70.8 | **71.0** | 70.8 | – | – | – |
-| MTOP intents DE | DE | 103 | 11,072 | 14 | 64.9 | 94.5 | 94.5 | **94.8** | 94.4 | 90.7 | 91.9 | 94.4 | 94.4 | – | – | – |
+| GermEval 2018 offensive language | DE | 4 | 4,258 | 45 | 36.2 | 69.0 | 70.2 | 69.4 | 70.1 | 67.5 | 70.8 | 71.0 | 70.8 | **73.9** | 72.9 | – |
+| MTOP intents DE | DE | 103 | 11,072 | 14 | 64.9 | 94.5 | 94.5 | **94.8** | 94.4 | 90.7 | 91.9 | 94.4 | 94.4 | 94.3 | – | – |
 | Swiss Federal Supreme Court decisions DE (legal area) | DE | 47 | 25,737 | 3413 | 6.9 | 81.9 | 89.0 | 89.6 | 89.5 | 92.2 | 93.4 | 93.3 | **93.7** | – | – | – |
 | Open Food Facts DE (product categories) | DE | 342 | 69,366 | 18 | 2.0 | 26.1 | 44.9 | 35.5 | 46.4 | 57.8 | 60.5 | 58.6 | **60.6** | – | – | – |
 | HUPD patents (IPC subclass) | EN | 408 | 98,195 | 151 | 0.4 | 39.0 | 50.2 | 45.1 | 50.8 | 52.3 | – | **54.3** | – | – | – | – |

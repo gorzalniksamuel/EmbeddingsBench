@@ -8,6 +8,7 @@ first MAX_CHARS characters for this model.
 usage: python tfidf_char.py [dataset ...]
 """
 import json
+import os
 import sys
 import time
 
@@ -26,10 +27,12 @@ from extras import TEMPERATURES, WEIGHTS
 
 C_GRID = (0.1, 0.5, 1.0, 2.0)
 MAX_CHARS = 5000
+# hashed feature space; 2**18 keeps the SVM weights of very many classes in RAM (HUPD: 408 classes x 98k texts)
+N_FEATURES = 2 ** int(os.getenv("EB_CHAR_FEATURES_LOG2", "20"))
 
 
 def features(texts_by_split):
-    hv = HashingVectorizer(analyzer="char_wb", ngram_range=(3, 5), n_features=2 ** 20, alternate_sign=False,
+    hv = HashingVectorizer(analyzer="char_wb", ngram_range=(3, 5), n_features=N_FEATURES, alternate_sign=False,
                            norm=None, lowercase=True, dtype=np.float32)
     raw = {s: hv.transform([t[:MAX_CHARS] for t in texts]) for s, texts in texts_by_split.items()}
     tf = TfidfTransformer(sublinear_tf=True).fit(raw["train"])
