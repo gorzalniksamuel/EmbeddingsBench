@@ -174,7 +174,7 @@ DOMAIN = {"yahoo_answers": "community Q&A", "dbpedia_14": "encyclopedia", "20_ne
           "banking77": "banking intents", "clinc150": "assistant intents", "arxiv_11": "scientific papers",
           "ag_news": "news", "ledgar": "legal contracts", "medical_abstracts": "medical", "emotion": "emotion (tweets)",
           "gnad10": "news", "amazon_reviews_de": "product reviews (sentiment)", "massive_intent_de": "assistant intents",
-          "hupd_ipc": "patents (603-way long tail)", "off_de": "food products", "mtop_intent_de": "assistant intents (long tail)",
+          "hupd_ipc": "patents (IPC subclasses, long tail)", "off_de": "food products", "mtop_intent_de": "assistant intents (long tail)",
           "swiss_caselaw_de": "court decisions"}
 
 

@@ -22,12 +22,14 @@ COLORS = {"zero_shot": "#2a78d6", "knn": "#eb6834", "logreg": "#1baf7a", "svm_rb
           "mlp_tuned": "#9c36b5", "tfidf_svm": "#8a9099", "tfidf_char": "#495057", "ensemble": "#008300",
           "ensemble_char": "#2b8a3e", "finetune": "#d6336c", "finetune_1024": "#e64980", "finetune_headtail": "#c2255c",
           "ft_ensemble": "#a61e4d", "gbert": "#1864ab", "logreg_balanced": "#087f5b", "logit_adjusted": "#0b7285",
-          "mlp_weighted": "#5f3dc4", "mlp_balanced": "#862e9c", "finetune_weighted": "#f06595", "finetune_la": "#e599f7"}
+          "mlp_weighted": "#5f3dc4", "mlp_balanced": "#862e9c", "finetune_weighted": "#f06595", "finetune_la": "#e599f7",
+          "ftemb_knn": "#f08c00", "ftemb_logreg": "#0ca678", "ftemb_svm": "#e67700", "ftemb_mlp": "#7048e8"}
 NAMES = {"zero_shot": "Zero-shot", "knn": "kNN", "logreg": "LogReg", "svm_rbf": "RBF SVM", "mlp": "MLP", "mlp_tuned": "MLP (tuned)",
          "tfidf_svm": "TF-IDF", "tfidf_char": "TF-IDF char", "ensemble": "Emb.+TF-IDF", "ensemble_char": "Emb.+char TF-IDF",
          "finetune": "Fine-tuned", "finetune_1024": "FT 1,024 tok", "finetune_headtail": "FT head+tail", "ft_ensemble": "FT+TF-IDF",
          "gbert": "gbert-large", "logreg_balanced": "LogReg weighted", "logit_adjusted": "Logit-adjusted",
-         "mlp_weighted": "MLP weighted", "mlp_balanced": "MLP balanced", "finetune_weighted": "FT weighted", "finetune_la": "FT logit-adj."}
+         "mlp_weighted": "MLP weighted", "mlp_balanced": "MLP balanced", "finetune_weighted": "FT weighted", "finetune_la": "FT logit-adj.",
+         "ftemb_knn": "kNN", "ftemb_logreg": "LogReg", "ftemb_svm": "RBF SVM", "ftemb_mlp": "MLP (tuned)"}
 MAIN = ["zero_shot", "knn", "logreg", "svm_rbf", "mlp_tuned", "tfidf_svm", "ensemble", "finetune", "ft_ensemble"]
 IMB = ["logreg", "logreg_balanced", "logit_adjusted", "mlp_tuned", "mlp_weighted", "mlp_balanced", "finetune", "finetune_weighted", "finetune_la", "tfidf_svm", "ensemble"]
 
@@ -153,6 +155,39 @@ def finetune_gains(R, names, out):
     return table
 
 
+def heads_frozen_vs_finetuned(R, names, out):
+    """Same classifiers on frozen vs fine-tuned jina embeddings, plus the fine-tuned linear head and gbert."""
+    rows = [n for n in names if "ftemb_logreg" in R[n]["methods"]]
+    if not rows:
+        return []
+    pairs = [("knn", "ftemb_knn"), ("logreg", "ftemb_logreg"), ("svm_rbf", "ftemb_svm"), ("mlp_tuned", "ftemb_mlp")]
+    fig, axes = plt.subplots(1, len(rows), figsize=(2.3 * len(rows), 3.4), sharey=False, squeeze=False)
+    table = []
+    for ax, n in zip(axes[0], rows):
+        m = R[n]["methods"]
+        xs = np.arange(len(pairs))
+        frozen = [100 * m[a]["accuracy"] if a in m else np.nan for a, _ in pairs]
+        tuned = [100 * m[b]["accuracy"] if b in m else np.nan for _, b in pairs]
+        ax.bar(xs - 0.2, frozen, 0.4, color="#adb5bd", label="frozen jina")
+        ax.bar(xs + 0.2, tuned, 0.4, color=[COLORS[b] for _, b in pairs], label="fine-tuned jina")
+        ax.axhline(100 * m["finetune"]["accuracy"], color=COLORS["finetune"], lw=1.2, ls="--", label="fine-tuned linear head")
+        if "gbert" in m:
+            ax.axhline(100 * m["gbert"]["accuracy"], color=COLORS["gbert"], lw=1.2, ls=":", label="gbert-large")
+        ax.set_xticks(xs, [NAMES[a] for a, _ in pairs], rotation=40, ha="right", fontsize=7)
+        lo = np.nanmin(frozen + tuned)
+        ax.set_ylim(max(0, lo - 5), min(100, max(np.nanmax(tuned), 100 * m["finetune"]["accuracy"]) + 3))
+        ax.set_title(short(R[n]["meta"]["title"]), fontsize=8)
+        table.append((n, {k: m[k]["accuracy"] for k in [a for a, _ in pairs] + [b for _, b in pairs] + ["finetune", "gbert"] if k in m}))
+    axes[0][0].set_ylabel("test accuracy (%)")
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=7, bbox_to_anchor=(0.5, -0.08))
+    fig.suptitle("The same classifiers on frozen (grey) and fine-tuned (colour) jina embeddings", fontweight="bold", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out / "classifiers_on_finetuned_embeddings.png")
+    plt.close(fig)
+    return table
+
+
 def imbalance(R, names, out):
     rows = [n for n in names if "logreg_balanced" in R[n]["methods"]]
     if not rows:
@@ -248,6 +283,7 @@ def main():
     learning_curves(R, names, figs)
     ft = finetune_gains(R, names, figs)
     imb = imbalance(R, names, figs)
+    heads = heads_frozen_vs_finetuned(R, names, figs)
     tokens_and_dims(R, names, figs)
     costs(res, figs)
 
@@ -264,6 +300,11 @@ def main():
         parts.append("## Fine-tuning")
         parts.append(md_table(["Dataset", "Frozen LogReg", "Fine-tuned", "Best without GPU training", "FT + TF-IDF", "gbert-large", "Train minutes"],
                               [(short(R[n]["meta"]["title"]), pct(b), pct(f), pct(bf), pct(fe), pct(g), round(s / 60) if s else "–") for n, b, f, bf, fe, g, s in ft]))
+    if heads:
+        cols = ["knn", "logreg", "svm_rbf", "mlp_tuned", "ftemb_knn", "ftemb_logreg", "ftemb_svm", "ftemb_mlp", "finetune", "gbert"]
+        parts.append("## Classifiers on frozen vs fine-tuned jina embeddings (test accuracy, %)")
+        parts.append(md_table(["Dataset"] + [("FT-emb " if c.startswith("ftemb") else "Frozen " if c in ("knn", "logreg", "svm_rbf", "mlp_tuned") else "") + NAMES[c] for c in cols],
+                              [(short(R[n]["meta"]["title"]), *[pct(v.get(c)) for c in cols]) for n, v in heads]))
     if imb:
         parts.append("## Class imbalance (accuracy / balanced accuracy / macro-F1 / tail recall, %)")
         for n, rows in imb:

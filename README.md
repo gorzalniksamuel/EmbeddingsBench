@@ -14,19 +14,23 @@ versioning models, an inference API, and a cost model that predicts GPU and CPU 
 
 ## Findings
 
-- **A classifier on top is needed.** The model returns vectors, not labels. Matching texts against label
-  names (zero-shot) is weak, especially for long or noisy texts; a logistic regression on the frozen
-  embeddings is about 40 points better on average and beats zero-shot with a handful of labelled examples per class.
-- **Non-linear heads do not pay on frozen embeddings.** MLPs and an RBF-kernel SVM stay within about ±1 point of
-  logistic regression; an automatic bias–variance search (depth 0–3, width up to 4,096) often picks a linear model.
-- **Combine embeddings with TF-IDF.** Averaging embedding-LogReg probabilities with TF-IDF scores (weight chosen on
-  validation) is the strongest classifier without GPU training on most datasets: embeddings capture meaning,
-  TF-IDF exact terms.
-- **Fine-tuning helps where frozen embeddings struggle** (long, topical or noisy texts; reviews), by several points,
-  and not at all on short intents. It costs GPU time and gives a single-task model.
-- **2,048 instead of 512 tokens hardly matters** for frozen embeddings; most texts are short.
-- **Embeddings can be cut to 512 dimensions** (Matryoshka) for a loss of about 0.5–3 points.
-- **Class imbalance:** class weighting raises recall on rare classes by a few points; see the Tail recall metric.
+Details, figures and recommendations for large and many-class datasets: [report/REPORT.md](report/REPORT.md) ([PDF](report/REPORT.pdf)).
+
+- **A classifier on top is needed.** Matching texts against label names (zero-shot) only works for descriptive
+  labels; logistic regression on the frozen embeddings is about 40 points better on average.
+- **Logistic regression is the right default on frozen embeddings.** A tuned MLP is +0.3 points on average,
+  an RBF SVM −0.9, kNN −6.5; an automatic architecture search mostly picks a linear model.
+- **Combine embeddings with TF-IDF.** The probability ensemble beats LogReg on 13 of 18 datasets (+3.5 points on
+  average) without GPU training, and matches or beats LoRA fine-tuning on 4 of 6.
+- **Best jina-based model: fine-tuned jina + TF-IDF** (+4.8 points over frozen LogReg on average). After fine-tuning,
+  the classifier on top no longer matters: LogReg, SVM and MLP on the fine-tuned embeddings equal the linear head.
+- **German: gbert-large fine-tuned in full beat LoRA-fine-tuned jina** on all three German datasets (1–3 points).
+- **Many classes (300+): frozen embeddings alone are not enough.** On 342 food categories and 408 patent classes,
+  TF-IDF and the ensembles are 4–16 points ahead of LogReg.
+- **Class imbalance:** class weighting raises recall on the rarest third of classes by 3–17 points; the accuracy
+  cost grows with the number of classes.
+- **Input length and size:** 2,048 instead of 512 tokens only helps on long documents; Matryoshka 512 dimensions
+  cost about 1 point.
 
 ## Leaderboard
 
@@ -36,28 +40,28 @@ confusion matrices are in [`results/results.json`](results/results.json) and on 
 
 <!-- LEADERBOARD:START -->
 
-Test accuracy (%), interim results of 12 October 2026. Full analysis, figures and recommendations: [report/REPORT.md](report/REPORT.md) ([PDF](report/REPORT.pdf)).
+Test accuracy (%), results of 12 October 2026 (fine-tuning of the remaining datasets is running). Full analysis, figures and recommendations: [report/REPORT.md](report/REPORT.md) ([PDF](report/REPORT.pdf)).
 
-| Dataset | Classes | Zero-shot | kNN | LogReg | MLP | TF-IDF | Emb.+TF-IDF | Best (method) | Macro-F1 of best |
-|---|---|---|---|---|---|---|---|---|---|
-| GermEval 2018 offensive language | 4 | 36.2 | 69.0 | 70.2 | 70.3 | 67.5 | – | **70.3** (MLP) | 37.1 |
-| Amazon reviews DE | 5 | 50.7 | 62.1 | 62.2 | 62.2 | 54.6 | 63.0 | **63.6** (Fine-tuned jina) | 63.1 |
-| 10kGNAD German news | 9 | 22.9 | 74.3 | 84.1 | 83.3 | 87.4 | 88.7 | **91.3** (gbert-large) | 91.2 |
-| Swiss Federal Supreme Court decisions DE | 47 | 6.9 | 81.9 | 89.0 | 89.5 | 92.2 | 93.3 | **93.7** (Emb.+char TF-IDF) | 89.4 |
-| MASSIVE intents DE | 60 | 80.3 | 87.2 | 87.0 | 87.1 | 78.6 | 87.3 | **87.4** (Emb.+char TF-IDF) | 83.5 |
-| MTOP intents DE | 103 | 64.9 | 94.5 | 94.5 | 94.4 | 90.7 | 94.4 | **94.8** (RBF SVM) | 83.2 |
-| Open Food Facts DE | 342 | 2.0 | 26.1 | 44.9 | 45.4 | 57.8 | 58.6 | **60.6** (Emb.+char TF-IDF) | 56.9 |
-| AG News | 4 | 49.9 | 81.7 | 87.2 | 87.3 | 89.0 | 90.4 | **90.8** (Emb.+char TF-IDF) | 90.7 |
-| Medical abstracts | 5 | 31.5 | 61.7 | 70.5 | 71.6 | 75.6 | 76.4 | **77.5** (TF-IDF char) | 77.2 |
-| Emotion | 6 | 90.7 | 92.7 | 92.4 | 91.7 | 88.6 | 92.2 | **92.7** (Emb.+char TF-IDF) | 88.1 |
-| Yahoo! Answers Topics | 10 | 23.9 | 49.2 | 67.1 | 67.0 | 64.5 | 70.0 | **71.5** (Fine-tuned jina) | 71.2 |
-| arXiv papers | 11 | 22.7 | 75.7 | 82.9 | 83.7 | 87.3 | 87.7 | **87.7** (Emb.+TF-IDF) | 87.0 |
-| DBpedia-14 | 14 | 67.9 | 98.3 | 98.2 | 98.1 | 96.8 | 98.7 | **98.7** (Emb.+TF-IDF) | 98.7 |
-| 20 Newsgroups | 20 | 12.5 | 46.2 | 65.7 | 65.5 | 71.6 | 73.6 | **75.0** (Emb.+char TF-IDF) | 73.4 |
-| Banking77 | 77 | 81.6 | 92.7 | 93.0 | 92.8 | 88.5 | 93.4 | **93.4** (Emb.+TF-IDF) | 93.3 |
-| LEDGAR contract clauses | 100 | 4.5 | 69.5 | 74.2 | 76.8 | 81.6 | 81.7 | **81.7** (Emb.+TF-IDF) | 77.6 |
-| CLINC150 | 150 | 37.9 | 87.4 | 92.6 | 92.9 | 91.3 | 94.8 | **94.8** (Emb.+TF-IDF) | 94.8 |
-| HUPD patents | 408 | 0.4 | 39.0 | 50.2 | 50.4 | 52.3 | 54.3 | **54.3** (Emb.+TF-IDF) | 38.7 |
+| Dataset | Lang | Classes | Train | Avg tokens | Zero-shot | kNN | LogReg | RBF SVM | MLP tuned | TF-IDF | TF-IDF char | Emb.+TF-IDF | Emb.+char | Fine-tuned | FT+TF-IDF | gbert-large |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Yahoo! Answers Topics | EN | 10 | 10,000 | 127 | 23.9 | 49.2 | 67.1 | 65.2 | 67.0 | 64.5 | 65.4 | 70.0 | 70.8 | 71.5 | **72.9** | – |
+| DBpedia-14 | EN | 14 | 7,000 | 79 | 67.9 | 98.3 | 98.2 | 98.4 | 98.1 | 96.8 | 96.2 | **98.7** | 98.4 | – | – | – |
+| 20 Newsgroups | EN | 20 | 9,361 | 275 | 12.5 | 46.2 | 65.7 | 64.0 | 65.5 | 71.6 | 72.1 | 73.6 | 75.0 | 72.7 | **75.6** | – |
+| Banking77 | EN | 77 | 8,497 | 15 | 81.6 | 92.7 | 93.0 | 92.8 | 92.8 | 88.5 | 90.0 | **93.4** | 93.1 | – | – | – |
+| CLINC150 (in-scope) | EN | 150 | 15,000 | 11 | 37.9 | 87.4 | 92.6 | 92.9 | 92.9 | 91.3 | 91.6 | **94.8** | 94.6 | – | – | – |
+| arXiv papers (11 categories) | EN | 11 | 8,800 | 4300 | 22.7 | 75.7 | 82.9 | 82.5 | 83.7 | 87.3 | 85.9 | 87.7 | 86.8 | 86.6 | **88.6** | – |
+| AG News | EN | 4 | 10,000 | 54 | 49.9 | 81.7 | 87.2 | 87.3 | 87.3 | 89.0 | 89.2 | 90.4 | **90.8** | – | – | – |
+| LEDGAR contract clauses (LexGLUE) | EN | 100 | 19,092 | 144 | 4.5 | 69.5 | 74.2 | 76.5 | 76.8 | 81.6 | 80.2 | **81.7** | 80.6 | – | – | – |
+| Medical abstracts | EN | 5 | 9,817 | 274 | 31.5 | 61.7 | 70.5 | 71.8 | 71.6 | 75.6 | **77.5** | 76.4 | 77.4 | – | – | – |
+| Emotion (tweets) | EN | 6 | 16,000 | 22 | 90.7 | 92.7 | 92.4 | 92.3 | 91.7 | 88.6 | 87.8 | 92.2 | **92.7** | – | – | – |
+| 10kGNAD German news | DE | 9 | 7,860 | 732 | 22.9 | 74.3 | 84.1 | 82.4 | 83.3 | 87.4 | 87.5 | 88.7 | 87.8 | 88.6 | 89.9 | **91.5** |
+| Amazon reviews DE (stars) | DE | 5 | 10,000 | 65 | 50.7 | 62.1 | 62.2 | 62.2 | 62.2 | 54.6 | 53.5 | 63.0 | 63.3 | 63.6 | 63.7 | **64.7** |
+| MASSIVE intents DE | DE | 60 | 11,514 | 12 | 80.3 | 87.2 | 87.0 | 86.9 | 87.1 | 78.6 | 82.6 | 87.3 | 87.4 | 87.0 | 87.3 | **88.0** |
+| GermEval 2018 offensive language | DE | 4 | 4,258 | 45 | 36.2 | 69.0 | 70.2 | 69.4 | 70.1 | 67.5 | 70.8 | **71.0** | 70.8 | – | – | – |
+| MTOP intents DE | DE | 103 | 11,072 | 14 | 64.9 | 94.5 | 94.5 | **94.8** | 94.4 | 90.7 | 91.9 | 94.4 | 94.4 | – | – | – |
+| Swiss Federal Supreme Court decisions DE (legal area) | DE | 47 | 25,737 | 3413 | 6.9 | 81.9 | 89.0 | 89.6 | 89.5 | 92.2 | 93.4 | 93.3 | **93.7** | – | – | – |
+| Open Food Facts DE (product categories) | DE | 342 | 69,366 | 18 | 2.0 | 26.1 | 44.9 | 35.5 | 46.4 | 57.8 | 60.5 | 58.6 | **60.6** | – | – | – |
+| HUPD patents (IPC subclass) | EN | 408 | 98,195 | 151 | 0.4 | 39.0 | 50.2 | 45.1 | 50.8 | 52.3 | – | **54.3** | – | – | – | – |
 
 <!-- LEADERBOARD:END -->
 
@@ -70,7 +74,8 @@ flowchart LR
   E --> EV[evaluate.py · extras.py · tfidf_char.py<br/>mlp_search.py · imbalance.py<br/>frozen-embedding classifiers]
   D --> F[finetune.py · gbert.py<br/>fine-tuning]
   F --> FE[ft_ensemble.py]
-  EV & F & FE --> R[(results.json<br/>predictions)]
+  F --> FH[ft_heads.py]
+  EV & F & FE & FH --> R[(results.json<br/>predictions)]
   R --> C[costs.py]
   R --> W[web/app.py<br/>dashboard · registry API · job worker]
   W <--> REG[(registry/<br/>datasets · splits · models · jobs)]
@@ -87,6 +92,9 @@ flowchart LR
 | `bench/mlp_search.py` | Automatic bias–variance search for an MLP (Optuna TPE), train vs. validation accuracy per trial. |
 | `bench/imbalance.py` | Class-weighted LogReg and MLP, balanced batches, logit adjustment; tail recall. |
 | `bench/finetune.py`, `bench/gbert.py`, `bench/ft_ensemble.py` | LoRA fine-tuning (weighted / logit-adjusted losses, head + tail truncation), gbert-large, fine-tuned + TF-IDF ensembles. |
+| `bench/ft_heads.py` | The classifier sweep (kNN, LogReg, RBF SVM, tuned MLP) repeated on the fine-tuned encoder's embeddings. |
+| `bench/report.py` | Figures and tables for the findings report (`report/`). |
+| `bench/export_benchmark_models.py` | Registers the benchmark's selected classifiers as registry models (servable by the inference API). |
 | `bench/gpu.py` | Device, precision (bf16 / fp16 / fp32), memory-sized batches, out-of-memory back-off, CPU fallback. |
 | `bench/remote.py` | Runs any GPU script on another machine over SSH and syncs the results back. |
 | `bench/registry.py`, `bench/jobs.py` | Versioned datasets, splits and models; job queue and worker; CLI. |

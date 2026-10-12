@@ -2,18 +2,20 @@
 
 **Text classification with `jinaai/jina-embeddings-v5-text-small-classification`: classifiers on frozen embeddings, TF-IDF, ensembles, LoRA fine-tuning and a German-native reference model on 18 English and German datasets.**
 
-Status: interim report, results as of 12 October 2026. Runs still in progress are listed at the end; the numbers here will be updated when they finish. All accuracies are on held-out test splits; every setting (C, k, MLP shape, ensemble weight, fine-tuning checkpoint) was chosen on the validation split only.
+Status: results as of 12 October 2026, 11:00 UTC. Fine-tuning of the remaining 10 datasets and the imbalance fine-tunes are still running (see the end); the report and the dashboard are updated when they finish. All accuracies are on held-out test splits; every setting (C, k, MLP shape, ensemble weight, fine-tuning checkpoint) was chosen on the validation split only.
 
 ## Key findings
 
-1. **Logistic regression is the right default on frozen embeddings.** Across 18 datasets a tuned MLP is on average +0.2 points better (median 0.0), an RBF SVM −0.9, kNN −6.5. A 40-trial MLP architecture search most often picks a linear model.
-2. **The cheapest real gain is an ensemble with TF-IDF.** Averaging LogReg probabilities with a word-n-gram TF-IDF SVM is better than LogReg on 12 of 17 datasets, +3.7 points on average, with no GPU training. It matches or beats LoRA fine-tuning on 4 of 6 datasets where both were run.
-3. **Frozen embeddings struggle with many fine-grained classes.** With 342 food categories (Open Food Facts DE) LogReg reaches 44.9 % while TF-IDF reaches 57.8 % and the ensemble with character n-grams 60.6 %. For 408 patent classes (HUPD): 50.2 / 52.3 / 54.3 %. Intent datasets with 60–150 classes are the exception (87–95 %), because their classes differ in meaning, not in vocabulary.
-4. **Long, technical or legal texts favour lexical features.** On Swiss court decisions, arXiv and LEDGAR, TF-IDF alone beats LogReg on frozen embeddings by 3–7 points and is within 1.5 points of the best method.
-5. **LoRA fine-tuning helps most on topical datasets with mid-length texts** (+3.7 to +7.0 points over LogReg on Yahoo! Answers, 20 Newsgroups, 10kGNAD, arXiv), little on short texts with semantic classes (MASSIVE +0.0, Amazon stars +1.4). On 10kGNAD the German-native `gbert-large` (fully fine-tuned) is ahead: 91.3 % vs 88.6 % (89.6 % with head + tail truncation).
-6. **Zero-shot (label-name similarity) only works when label names are descriptive**: 91 % on emotions, 82 % on banking intents, under 10 % on legal areas, patents and product categories.
-7. **For imbalanced data, class weighting improves the rare classes at no cost in accuracy** (LEDGAR: tail recall 67.0 → 69.8 %, balanced accuracy 71.5 → 72.7 %); logit adjustment selected τ = 0, i.e. no change.
-8. **2,048-token input only matters when most texts are long** (Swiss decisions +2.2, 10kGNAD +0.9, arXiv +0.5 points vs 512 tokens). **Matryoshka truncation to 512 dimensions costs 1.1 points on average** (at most 3.1), 256 dimensions 2.9 points.
+1. **Logistic regression is the right default on frozen embeddings.** Across 18 datasets a tuned MLP is on average +0.3 points better (median 0.0), an RBF SVM −0.9, kNN −6.5. A 40-trial MLP architecture search most often picks a linear model.
+2. **The cheapest real gain is an ensemble with TF-IDF.** Averaging LogReg probabilities with a word-n-gram TF-IDF SVM beats LogReg on 13 of 18 datasets, +3.5 points on average, with no GPU training. It matches or beats LoRA fine-tuning on 4 of the 6 datasets where both were run.
+3. **The best jina-based classifier is fine-tuned jina + TF-IDF**: +4.8 points over frozen LogReg on average (Yahoo! 72.9 %, arXiv 88.6 %, 20 Newsgroups 75.6 %, 10kGNAD 89.9 %). Fine-tuning and lexical features are complementary.
+4. **After fine-tuning, the classifier on top no longer matters.** LogReg, RBF SVM and a tuned MLP on the fine-tuned encoder's embeddings land within about 1 point of its jointly trained linear head (the MLP search again chose a linear model on all six datasets). kNN trails LogReg by up to 20 points on frozen embeddings, but only by 0–6 points after fine-tuning, because fine-tuning pulls each class together.
+5. **For German, a German-native encoder fine-tuned in full is stronger.** `gbert-large` beat LoRA-fine-tuned jina on all three German datasets: 10kGNAD 91.5 vs 88.6 % (89.9 % with TF-IDF), Amazon reviews 64.7 vs 63.6 %, MASSIVE 88.0 vs 87.0 %. It needed only about 20 min and 3.7 GB of GPU memory per dataset (8-bit AdamW).
+6. **Frozen embeddings struggle with many fine-grained classes.** With 342 food categories (Open Food Facts DE) LogReg reaches 44.9 % while TF-IDF reaches 57.8 % and the ensemble with character n-grams 60.6 %. For 408 patent classes (HUPD): 50.2 / 52.3 / 54.3 %. Intent datasets with 60–150 classes are the exception (87–95 %), because their classes differ in meaning, not in vocabulary.
+7. **Long, technical or legal texts favour lexical features.** On Swiss court decisions, arXiv and LEDGAR, TF-IDF alone beats LogReg on frozen embeddings by 3–7 points and is within 1.5 points of the best method.
+8. **Class weighting buys rare-class recall; the price grows with the number of classes.** Tail recall (the third of classes with the fewest training examples): MTOP 27.9 → 36.8 % at equal accuracy, Swiss decisions 79.4 → 87.7 % (−1.5 points accuracy), Open Food Facts 36.4 → 46.8 % (−2.4), HUPD 12.6 → 29.8 % (−5.9).
+9. **Zero-shot (label-name similarity) only works when label names are descriptive**: 91 % on emotions, 82 % on banking intents, under 10 % on legal areas, patents and product categories.
+10. **2,048-token input only matters when most texts are long** (Swiss decisions +2.2, 10kGNAD +0.9, arXiv +0.5 points vs 512 tokens); for fine-tuning, head + tail truncation helped more than 1,024 tokens (10kGNAD 89.6 vs 88.8 %). **Matryoshka truncation to 512 dimensions costs 1.1 points on average** (at most 3.1), 256 dimensions 2.9 points.
 
 ## Setup
 
@@ -21,9 +23,10 @@ Status: interim report, results as of 12 October 2026. Runs still in progress ar
 - **Classifiers on frozen embeddings:** zero-shot (cosine similarity to label-name embeddings), kNN (cosine, k tuned), logistic regression (C tuned), RBF SVM, MLP (1–2 GELU layers) and a 40-trial MLP architecture search.
 - **Text baselines:** TF-IDF (word 1–2-grams, sublinear tf) with a linear SVM; character 2–5-gram TF-IDF.
 - **Ensembles:** weighted average of LogReg probabilities and softmaxed TF-IDF scores; weight and temperature chosen on validation.
-- **Fine-tuning:** LoRA rank 16 on all attention and MLP projections, linear head initialised from the frozen LogReg, 3 epochs, 512 tokens (variants: 1,024 tokens, head + tail truncation, class-weighted and logit-adjusted loss). `deepset/gbert-large` fully fine-tuned as a German reference.
+- **Fine-tuning:** LoRA rank 16 on all attention and MLP projections, linear head initialised from the frozen LogReg, 3 epochs, 512 tokens (variants: 1,024 tokens, head + tail truncation, class-weighted and logit-adjusted loss), plus an ensemble with TF-IDF and the full classifier sweep on the fine-tuned embeddings. `deepset/gbert-large` fully fine-tuned as a German reference (8-bit AdamW, effective batch 16, 3 epochs).
 - **Metrics:** accuracy, balanced accuracy, macro-F1, MCC, Cohen's κ, top-3 accuracy and tail recall (recall on the third of classes with the fewest training examples).
 - **Hardware:** one RTX 3060 (12 GB), shared with other services.
+- **Method categories** (as grouped in the dashboard): frozen jina + classifier · frozen jina with imbalance schemes · text only (TF-IDF) · ensembles of frozen embeddings and TF-IDF · fine-tuned jina (LoRA) · classifiers on fine-tuned jina embeddings · other model (gbert-large).
 
 ## Datasets
 
@@ -46,7 +49,7 @@ Status: interim report, results as of 12 October 2026. Runs still in progress ar
 | Banking77 | EN | banking intents | 77 | 8,497 / 1,496 / 3,069 | 15 | 5:1 |
 | LEDGAR contract clauses (LexGLUE) | EN | legal contracts | 100 | 19,092 / 9,914 / 9,855 | 144 | 9:1 |
 | CLINC150 (in-scope) | EN | assistant intents | 150 | 15,000 / 2,997 / 4,498 | 11 | 1:1 |
-| HUPD patents (IPC subclass) | EN | patents (603-way long tail) | 408 | 98,195 / 18,934 / 18,901 | 151 | 50:1 |
+| HUPD patents (IPC subclass) | EN | patents (IPC subclasses, long tail) | 408 | 98,195 / 18,934 / 18,901 | 151 | 50:1 |
 
 Splits are fixed and stratified where the source has none; large sources are capped per class (see `bench/data.py`). Train imbalance is the ratio of the largest to the smallest class in the training split.
 
@@ -56,23 +59,23 @@ Splits are fixed and stratified where the source has none; large sources are cap
 
 | Dataset | Classes | Zero-shot | kNN | LogReg | MLP | TF-IDF | Emb.+TF-IDF | Best (method) | Macro-F1 of best |
 |---|---|---|---|---|---|---|---|---|---|
-| GermEval 2018 offensive language | 4 | 36.2 | 69.0 | 70.2 | 70.3 | 67.5 | – | **70.3** (MLP) | 37.1 |
-| Amazon reviews DE | 5 | 50.7 | 62.1 | 62.2 | 62.2 | 54.6 | 63.0 | **63.6** (Fine-tuned jina) | 63.1 |
-| 10kGNAD German news | 9 | 22.9 | 74.3 | 84.1 | 83.3 | 87.4 | 88.7 | **91.3** (gbert-large) | 91.2 |
-| Swiss Federal Supreme Court decisions DE | 47 | 6.9 | 81.9 | 89.0 | 89.5 | 92.2 | 93.3 | **93.7** (Emb.+char TF-IDF) | 89.4 |
-| MASSIVE intents DE | 60 | 80.3 | 87.2 | 87.0 | 87.1 | 78.6 | 87.3 | **87.4** (Emb.+char TF-IDF) | 83.5 |
-| MTOP intents DE | 103 | 64.9 | 94.5 | 94.5 | 94.4 | 90.7 | 94.4 | **94.8** (RBF SVM) | 83.2 |
+| GermEval 2018 offensive language | 4 | 36.2 | 69.0 | 70.2 | 70.3 | 67.5 | 71.0 | **71.0** (Emb.+TF-IDF) | 34.9 |
+| Amazon reviews DE | 5 | 50.7 | 62.1 | 62.2 | 62.0 | 54.6 | 63.0 | **64.7** (gbert-large) | 64.6 |
+| 10kGNAD German news | 9 | 22.9 | 74.3 | 84.1 | 83.7 | 87.4 | 88.7 | **91.5** (gbert-large) | 91.5 |
+| Swiss Federal Supreme Court decisions DE | 47 | 6.9 | 81.9 | 89.0 | 89.0 | 92.2 | 93.3 | **93.7** (Emb.+char TF-IDF) | 89.4 |
+| MASSIVE intents DE | 60 | 80.3 | 87.2 | 87.0 | 87.0 | 78.6 | 87.3 | **88.0** (gbert-large) | 84.1 |
+| MTOP intents DE | 103 | 64.9 | 94.5 | 94.5 | 94.6 | 90.7 | 94.4 | **94.8** (RBF SVM) | 83.2 |
 | Open Food Facts DE | 342 | 2.0 | 26.1 | 44.9 | 45.4 | 57.8 | 58.6 | **60.6** (Emb.+char TF-IDF) | 56.9 |
-| AG News | 4 | 49.9 | 81.7 | 87.2 | 87.3 | 89.0 | 90.4 | **90.8** (Emb.+char TF-IDF) | 90.7 |
-| Medical abstracts | 5 | 31.5 | 61.7 | 70.5 | 71.6 | 75.6 | 76.4 | **77.5** (TF-IDF char) | 77.2 |
-| Emotion | 6 | 90.7 | 92.7 | 92.4 | 91.7 | 88.6 | 92.2 | **92.7** (Emb.+char TF-IDF) | 88.1 |
-| Yahoo! Answers Topics | 10 | 23.9 | 49.2 | 67.1 | 67.0 | 64.5 | 70.0 | **71.5** (Fine-tuned jina) | 71.2 |
-| arXiv papers | 11 | 22.7 | 75.7 | 82.9 | 83.7 | 87.3 | 87.7 | **87.7** (Emb.+TF-IDF) | 87.0 |
-| DBpedia-14 | 14 | 67.9 | 98.3 | 98.2 | 98.1 | 96.8 | 98.7 | **98.7** (Emb.+TF-IDF) | 98.7 |
-| 20 Newsgroups | 20 | 12.5 | 46.2 | 65.7 | 65.5 | 71.6 | 73.6 | **75.0** (Emb.+char TF-IDF) | 73.4 |
-| Banking77 | 77 | 81.6 | 92.7 | 93.0 | 92.8 | 88.5 | 93.4 | **93.4** (Emb.+TF-IDF) | 93.3 |
-| LEDGAR contract clauses | 100 | 4.5 | 69.5 | 74.2 | 76.8 | 81.6 | 81.7 | **81.7** (Emb.+TF-IDF) | 77.6 |
-| CLINC150 | 150 | 37.9 | 87.4 | 92.6 | 92.9 | 91.3 | 94.8 | **94.8** (Emb.+TF-IDF) | 94.8 |
+| AG News | 4 | 49.9 | 81.7 | 87.2 | 86.9 | 89.0 | 90.4 | **90.8** (Emb.+char TF-IDF) | 90.7 |
+| Medical abstracts | 5 | 31.5 | 61.7 | 70.5 | 72.0 | 75.6 | 76.4 | **77.5** (TF-IDF char) | 77.2 |
+| Emotion | 6 | 90.7 | 92.7 | 92.4 | 92.3 | 88.6 | 92.2 | **92.7** (Emb.+char TF-IDF) | 88.1 |
+| Yahoo! Answers Topics | 10 | 23.9 | 49.2 | 67.1 | 67.6 | 64.5 | 70.0 | **72.9** (Fine-tuned jina + TF-IDF) | 72.5 |
+| arXiv papers | 11 | 22.7 | 75.7 | 82.9 | 82.8 | 87.3 | 87.7 | **88.6** (Fine-tuned jina + TF-IDF) | 87.9 |
+| DBpedia-14 | 14 | 67.9 | 98.3 | 98.2 | 98.2 | 96.8 | 98.7 | **98.7** (Emb.+TF-IDF) | 98.7 |
+| 20 Newsgroups | 20 | 12.5 | 46.2 | 65.7 | 65.5 | 71.6 | 73.6 | **75.6** (Fine-tuned jina + TF-IDF) | 74.0 |
+| Banking77 | 77 | 81.6 | 92.7 | 93.0 | 92.1 | 88.5 | 93.4 | **93.4** (Emb.+TF-IDF) | 93.3 |
+| LEDGAR contract clauses | 100 | 4.5 | 69.5 | 74.2 | 75.1 | 81.6 | 81.7 | **81.7** (Emb.+TF-IDF) | 77.6 |
+| CLINC150 | 150 | 37.9 | 87.4 | 92.6 | 92.3 | 91.3 | 94.8 | **94.8** (Emb.+TF-IDF) | 94.8 |
 | HUPD patents | 408 | 0.4 | 39.0 | 50.2 | 50.4 | 52.3 | 54.3 | **54.3** (Emb.+TF-IDF) | 38.7 |
 
 The best method per dataset is picked by test accuracy for this overview; each method's own settings were chosen on validation. On GermEval 2018 and the long-tail sets (MTOP, HUPD), macro-F1 is far below accuracy: the majority classes dominate accuracy.
@@ -85,11 +88,12 @@ Test accuracy difference to LogReg on frozen embeddings, in points:
 
 | Classifier | Mean Δ (pts) | Median Δ (pts) | Better by > 0.5 pts | Datasets |
 |---|---|---|---|---|
-| Emb.+TF-IDF | +3.7 | +3.2 | 12 | 17 |
+| FT+TF-IDF | +4.8 | +5.7 | 5 | 6 |
+| Emb.+TF-IDF | +3.5 | +3.0 | 13 | 18 |
 | Fine-tuned | +3.5 | +4.0 | 5 | 6 |
 | TF-IDF | +0.5 | +0.3 | 9 | 18 |
-| MLP (tuned) | +0.2 | +0.0 | 3 | 15 |
-| RBF SVM | -0.9 | -0.1 | 3 | 17 |
+| MLP (tuned) | +0.3 | +0.0 | 5 | 18 |
+| RBF SVM | -0.9 | -0.1 | 3 | 18 |
 | kNN | -6.5 | -5.3 | 0 | 18 |
 | Zero-shot | -39.9 | -40.9 | 0 | 18 |
 
@@ -114,25 +118,85 @@ With 8–16 examples per class, LogReg on frozen embeddings already reaches most
 
 ![Gain from fine-tuning](figures/finetune_gains.png)
 
-| Dataset | Frozen LogReg | Best without GPU training | Fine-tuned jina (LoRA) | Variant | gbert-large | Training time |
+| Dataset | Frozen LogReg | Fine-tuned | Best without GPU training | FT + TF-IDF | gbert-large | Train minutes |
 |---|---|---|---|---|---|---|
-| Yahoo! Answers | 67.1 | 70.8 | **71.5** | – | – | 39 min |
-| 20 Newsgroups | 65.7 | **75.0** | 72.7 | – | – | 46 min |
-| arXiv (11) | 82.9 | **87.7** | 86.6 | – | – | 150 min |
-| 10kGNAD | 84.1 | 88.7 | 88.6 | 89.6 (head + tail) | **91.3** | 76 / 95 / 29 min |
-| Amazon reviews DE | 62.2 | 63.3 | **63.6** | – | running | 37 min |
-| MASSIVE DE | 87.0 | **87.4** | 87.0 | – | queued | 26 min |
+| Amazon reviews DE | 62.2 | 63.6 | 63.3 | 63.7 | 64.7 | 37 |
+| 10kGNAD German news | 84.1 | 88.6 | 88.7 | 89.9 | 91.5 | 76 |
+| MASSIVE intents DE | 87.0 | 87.0 | 87.4 | 87.3 | 88.0 | 26 |
+| Yahoo! Answers Topics | 67.1 | 71.5 | 70.8 | 72.9 | – | 39 |
+| arXiv papers | 82.9 | 86.6 | 87.7 | 88.6 | – | 150 |
+| 20 Newsgroups | 65.7 | 72.7 | 75.0 | 75.6 | – | 46 |
 
 - Fine-tuning pays off where classes are topical and the frozen embedding is not tuned to the distinction (Yahoo!, 20NG, news). On MASSIVE the best checkpoint was step 0, i.e. the untouched encoder.
-- Where lexical cues matter (20NG, arXiv), the embedding + TF-IDF ensemble beats the fine-tuned encoder without any GPU training; the fine-tuned + TF-IDF ensemble is being computed.
-- Keeping the end of long German news articles (head + tail: first 384 + last 128 tokens) adds 1.0 point over the first 512 tokens.
-- `gbert-large` (335M parameters, all weights trained, 8-bit AdamW, about 4 GB of GPU memory) beat LoRA on jina by 2.7 points on 10kGNAD in less than half the training time; Amazon DE and MASSIVE DE follow.
+- Fine-tuned jina alone beats the best classifier without GPU training on only 2 of 6 datasets; **combined with TF-IDF it is ahead on 5 of 6** (+0.4 to +2.1 points).
+- 10kGNAD variants: head + tail truncation (first 384 + last 128 tokens) 89.6 %, 1,024 tokens 88.8 %, 512 tokens 88.6 %.
+- `gbert-large` (335M parameters, all weights trained) is the best model on every German dataset where it ran. It is a different encoder, so its predictions cannot reuse stored jina embeddings.
+
+## Classifiers on fine-tuned embeddings
+
+Does it pay to run the classifier sweep again after fine-tuning? The fine-tuned encoder's pooled, normalised embeddings were computed for train / val / test, and the same classifiers with the same grids were fitted on them.
+
+![Classifiers on frozen vs fine-tuned embeddings](figures/classifiers_on_finetuned_embeddings.png)
+
+| Dataset | Frozen kNN | Frozen LogReg | Frozen RBF SVM | Frozen MLP (tuned) | FT-emb kNN | FT-emb LogReg | FT-emb RBF SVM | FT-emb MLP (tuned) | Fine-tuned | gbert-large |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Amazon reviews DE | 62.1 | 62.2 | 62.2 | 62.2 | 60.3 | 63.3 | 62.7 | 63.5 | 63.6 | 64.7 |
+| 10kGNAD German news | 74.3 | 84.1 | 82.4 | 83.3 | 87.0 | 87.9 | 88.7 | 87.8 | 88.6 | 91.5 |
+| MASSIVE intents DE | 87.2 | 87.0 | 86.9 | 87.1 | 87.1 | 87.0 | 86.9 | 87.1 | 87.0 | 88.0 |
+| Yahoo! Answers Topics | 49.2 | 67.1 | 65.2 | 67.0 | 65.1 | 71.1 | 71.4 | 71.2 | 71.5 | – |
+| arXiv papers | 75.7 | 82.9 | 82.5 | 83.7 | 85.5 | 85.6 | 85.9 | 86.0 | 86.6 | – |
+| 20 Newsgroups | 46.2 | 65.7 | 64.0 | 65.5 | 71.8 | 71.8 | 71.9 | 72.1 | 72.7 | – |
+
+- LogReg, RBF SVM and MLP on the fine-tuned embeddings end up within about 1 point of the fine-tuned linear head; none is consistently better. kNN is level on MASSIVE, 20NG and arXiv, but 3–6 points lower on Amazon and Yahoo!. The MLP search picked a linear model on all six datasets. **Keep the jointly trained linear head.**
+- kNN profits most from fine-tuning (+13 to +26 points over frozen kNN on 10kGNAD, Yahoo! and 20NG). It becomes a reasonable choice when classes change often, since new labelled examples can be added without retraining. On sentiment (Amazon) it stays weakest.
+- Caveat: the encoder saw the training texts, so the training embeddings are tighter than unseen ones; the test texts were never seen.
 
 ## Class imbalance
 
 ![Tail recall per imbalance scheme](figures/imbalance_tail_recall.png)
 
-**LEDGAR contract clauses (LexGLUE)**, %
+Accuracy / balanced accuracy / macro-F1 / tail recall in % (tail recall: recall on the third of classes with the fewest training examples).
+
+**Swiss Federal Supreme Court decisions DE (legal area)**
+
+| Classifier | Accuracy | Balanced acc. | Macro-F1 | Tail recall |
+|---|---|---|---|---|
+| LogReg | 89.0 | 83.9 | 81.4 | 79.4 |
+| LogReg weighted | 87.5 | 86.1 | 79.6 | 87.7 |
+| Logit-adjusted | 89.0 | 83.9 | 81.4 | 79.4 |
+| MLP (tuned) | 89.5 | 83.6 | 80.5 | 80.4 |
+| MLP weighted | 86.7 | 84.4 | 78.1 | 88.2 |
+| MLP balanced | 87.8 | 85.1 | 80.3 | 84.9 |
+| TF-IDF | 92.2 | 86.6 | 86.0 | 83.9 |
+| Emb.+TF-IDF | 93.3 | 88.0 | 87.5 | 85.3 |
+
+**MTOP intents DE**
+
+| Classifier | Accuracy | Balanced acc. | Macro-F1 | Tail recall |
+|---|---|---|---|---|
+| LogReg | 94.5 | 81.8 | 80.6 | 27.9 |
+| LogReg weighted | 94.5 | 86.0 | 82.0 | 36.8 |
+| Logit-adjusted | 93.7 | 87.0 | 78.4 | 40.2 |
+| MLP (tuned) | 94.4 | 83.9 | 81.9 | 33.8 |
+| MLP weighted | 93.8 | 85.5 | 79.0 | 36.8 |
+| MLP balanced | 94.4 | 86.4 | 83.9 | 37.7 |
+| TF-IDF | 90.7 | 69.8 | 67.1 | 16.2 |
+| Emb.+TF-IDF | 94.4 | 81.7 | 80.5 | 27.9 |
+
+**Open Food Facts DE (product categories)**
+
+| Classifier | Accuracy | Balanced acc. | Macro-F1 | Tail recall |
+|---|---|---|---|---|
+| LogReg | 44.9 | 42.4 | 42.8 | 36.4 |
+| LogReg weighted | 42.5 | 46.2 | 42.3 | 46.8 |
+| Logit-adjusted | 44.9 | 42.4 | 42.8 | 36.4 |
+| MLP (tuned) | 46.4 | 43.4 | 43.7 | 38.3 |
+| MLP weighted | 41.6 | 47.5 | 41.9 | 51.4 |
+| MLP balanced | 42.3 | 47.7 | 43.0 | 50.7 |
+| TF-IDF | 57.8 | 56.5 | 55.1 | 53.4 |
+| Emb.+TF-IDF | 58.6 | 56.9 | 55.7 | 53.9 |
+
+**LEDGAR contract clauses (LexGLUE)**
 
 | Classifier | Accuracy | Balanced acc. | Macro-F1 | Tail recall |
 |---|---|---|---|---|
@@ -145,7 +209,24 @@ With 8–16 examples per class, LogReg on frozen embeddings already reaches most
 | TF-IDF | 81.6 | 80.0 | 77.5 | 77.4 |
 | Emb.+TF-IDF | 81.7 | 80.1 | 77.6 | 77.4 |
 
-On LEDGAR (100 clause types, training set capped at 200 per class, 9:1 imbalance), class-weighted LogReg raises recall on the rarest third of classes by 2.8 points and balanced accuracy by 1.2 points without losing accuracy. Logit adjustment chose τ = 0 on validation. The lexical model is the strongest on rare classes here (tail recall 77.4 %). Imbalance schemes on MTOP (1175:1), Swiss decisions, Open Food Facts and HUPD, including class-weighted and logit-adjusted fine-tuning, are running.
+**HUPD patents (IPC subclass)**
+
+| Classifier | Accuracy | Balanced acc. | Macro-F1 | Tail recall |
+|---|---|---|---|---|
+| LogReg | 50.2 | 33.1 | 32.9 | 12.6 |
+| LogReg weighted | 44.3 | 40.5 | 33.7 | 29.8 |
+| Logit-adjusted | 48.8 | 38.4 | 34.3 | 22.2 |
+| MLP (tuned) | 50.8 | 38.7 | 36.5 | 24.6 |
+| MLP weighted | 40.7 | 42.8 | 31.5 | 39.3 |
+| MLP balanced | 42.7 | 42.9 | 33.7 | 34.9 |
+| TF-IDF | 52.3 | 39.6 | 38.3 | 25.3 |
+| Emb.+TF-IDF | 54.3 | 39.2 | 38.7 | 22.7 |
+
+- **Class-weighted LogReg** raises tail recall on every dataset: LEDGAR +2.8, MTOP +8.9, Swiss decisions +8.3, Open Food Facts +10.4, HUPD +17.2 points. The cost in accuracy grows with the number of classes and the imbalance (0 on MTOP and LEDGAR, −1.5 Swiss, −2.4 Open Food Facts, −5.9 HUPD).
+- **Logit adjustment** (subtracting τ · log prior at prediction time) is free to apply after training. τ is chosen on validation: τ = 0 (no change) on LEDGAR, Swiss and Open Food Facts; on MTOP and HUPD it improves balanced accuracy (+5.2, +5.3 points); on HUPD at a much smaller accuracy cost than weighting (−1.4 vs −5.9 points).
+- **MLP with weighted loss or balanced batches** gives the highest tail recall of the embedding classifiers on Open Food Facts and HUPD, again at the cost of accuracy.
+- TF-IDF is strongest on rare classes in the legal and product datasets, but on MTOP (1175:1, short texts) it is weakest: 16 % tail recall.
+- Class-weighted and logit-adjusted *fine-tuning* on MTOP and Swiss decisions is running.
 
 ## Input length and embedding size
 
@@ -155,7 +236,7 @@ The longer window helps only in proportion to how many texts exceed 512 tokens. 
 
 ## Cost
 
-Embedding runs at about 12,700 tokens/s and LoRA fine-tuning at about 1,900 tokens/s on the shared RTX 3060; both scale with tokens, not with the number of classes. LogReg, kNN and TF-IDF train in seconds to minutes on CPU, except TF-IDF with character n-grams on large many-class sets (HUPD: more than 11 GB of RAM, skipped).
+Embedding runs at about 11,000 tokens/s and LoRA fine-tuning at about 1,700 tokens/s on the shared RTX 3060; both scale with tokens, not with the number of classes. LogReg, kNN and TF-IDF train in seconds to minutes on CPU, except TF-IDF with character n-grams on large many-class sets (HUPD: more than 11 GB of RAM, skipped).
 
 ## Recommendations
 
@@ -163,9 +244,10 @@ Embedding runs at about 12,700 tokens/s and LoRA fine-tuning at about 1,900 toke
 
 **Larger datasets (≫ 10k training texts).**
 - Embed once and keep the embeddings: classifier experiments then cost CPU minutes, not GPU hours.
-- Fit LogReg with a fast solver (SAGA or a GPU softmax layer) and a coarse C grid; subsample for SVMs and for hyper-parameter search.
+- Fit LogReg with a fast solver (SAGA or a GPU softmax layer) and a coarse C grid; subsample for SVMs and for hyper-parameter search (we used 30k for the RBF SVM).
 - An MLP becomes worth trying above roughly 20k training texts (LEDGAR +2.6 points), still with a 1-layer default.
-- Fine-tune only on a capped subset first (e.g. 1,000 per class): the learning curves show diminishing returns, and fine-tuning time grows linearly with tokens.
+- Fine-tune only on a capped subset first (e.g. 1,000 per class): the learning curves show diminishing returns, and fine-tuning time grows linearly with tokens (about 1,700 tokens/s on an RTX 3060 for LoRA on jina v5 small).
+- Watch memory for TF-IDF on many classes: character n-grams on 98k texts × 408 classes needed more than 11 GB of RAM; use hashing with fewer features or word n-grams only.
 - Use 512-d Matryoshka embeddings when storage or kNN search matters; budget about 1 point of accuracy.
 
 **Many classes (> 100–150).**
@@ -180,17 +262,18 @@ Embedding runs at about 12,700 tokens/s and LoRA fine-tuning at about 1,900 toke
 
 **Long documents.** Use the 2,048-token window (or head + tail when fine-tuning) and combine with TF-IDF; legal and scientific texts carry much of their signal in vocabulary.
 
-**German.** jina v5 handles German well on frozen embeddings, but for a fine-tuned German classifier a German-native encoder (`gbert-large`) was stronger in the first comparison.
+**German.** jina v5 handles German well on frozen embeddings and is the practical choice when one embedding store serves several tasks. When one task justifies fine-tuning, train `gbert-large`: it was 1–3 points ahead of LoRA-fine-tuned jina on all three German datasets, at lower training cost.
 
-**Imbalanced data.** Start with class-weighted LogReg (free), measure tail recall, and only then try logit adjustment or weighted fine-tuning.
+**When to fine-tune at all.** Fine-tune when classes are topical and the frozen + TF-IDF ensemble plateaus; then ensemble the fine-tuned model with TF-IDF again. Skip it for short intent and emotion texts, where the frozen encoder is already as good. After fine-tuning, keep the linear head; re-running the classifier sweep on the fine-tuned embeddings brought nothing.
+
+**Imbalanced data.** Decide first whether accuracy or rare-class recall matters. Class-weighted LogReg costs nothing to try; logit adjustment can be tuned after training on validation; with hundreds of classes expect to trade several points of accuracy for large tail-recall gains.
 
 ## Still running
 
-- gbert-large on Amazon reviews DE and MASSIVE DE.
-- MLP search, imbalance schemes, GermEval extras on the new datasets.
-- 10kGNAD fine-tuning with 1,024 tokens; fine-tuned + TF-IDF ensembles.
-- Fine-tuning (plain, class-weighted, logit-adjusted) on MTOP and Swiss decisions.
+- LoRA fine-tuning, fine-tuned + TF-IDF ensembles and the fine-tuned-embedding sweep on the 10 remaining datasets (GermEval 2018, Banking77, CLINC150, Emotion, DBpedia, AG News, Open Food Facts, Medical abstracts, LEDGAR; HUPD with 1 epoch).
+- gbert-large on GermEval 2018, MTOP, Open Food Facts and Swiss decisions.
+- Plain, class-weighted and logit-adjusted fine-tuning on MTOP and Swiss decisions.
 
 ## Reproduce
 
-Code, data preparation and all raw results are in this repository: `results/results.json` (every number above, incl. per-setting validation scores), `bench/` (pipeline), `bench/report.py` (these figures and tables). See the README for setup and the GPU server configuration.
+Code, data preparation and all raw results are in this repository: `results/results.json` (every number above, incl. per-setting validation scores), `bench/` (pipeline), `bench/report.py` (these figures and tables), `docs/` (the interactive dashboard, also on GitHub Pages). See the README for setup and the GPU server configuration.

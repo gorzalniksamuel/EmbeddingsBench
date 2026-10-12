@@ -78,9 +78,11 @@ def main():
         "stages": list(registry.STAGES)}))
 
     # leaderboard for the README
-    order = ["zero_shot", "knn", "logreg", "svm_rbf", "mlp", "mlp_tuned", "tfidf_svm", "ensemble", "finetune", "ft_ensemble"]
-    short = {"zero_shot": "Zero-shot", "knn": "kNN", "logreg": "LogReg", "svm_rbf": "RBF SVM", "mlp": "MLP", "mlp_tuned": "MLP tuned",
-             "tfidf_svm": "TF-IDF", "ensemble": "Emb.+TF-IDF", "finetune": "Fine-tuned", "ft_ensemble": "FT+TF-IDF"}
+    order = ["zero_shot", "knn", "logreg", "svm_rbf", "mlp_tuned", "tfidf_svm", "tfidf_char", "ensemble", "ensemble_char",
+             "finetune", "ft_ensemble", "gbert"]
+    short = {"zero_shot": "Zero-shot", "knn": "kNN", "logreg": "LogReg", "svm_rbf": "RBF SVM", "mlp_tuned": "MLP tuned",
+             "tfidf_svm": "TF-IDF", "tfidf_char": "TF-IDF char", "ensemble": "Emb.+TF-IDF", "ensemble_char": "Emb.+char",
+             "finetune": "Fine-tuned", "ft_ensemble": "FT+TF-IDF", "gbert": "gbert-large"}
     cols = [m for m in order if any(m in d["methods"] for d in results["datasets"].values())]
     lines = ["| Dataset | Lang | Classes | Train | Avg tokens | " + " | ".join(short[m] for m in cols) + " |",
              "|---|---|---:|---:|---:|" + "---:|" * len(cols)]
