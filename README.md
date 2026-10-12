@@ -19,11 +19,11 @@ Details, figures and recommendations for large and many-class datasets: [report/
 - **A classifier on top is needed.** Matching texts against label names (zero-shot) only works for descriptive
   labels; logistic regression on the frozen embeddings is about 40 points better on average.
 - **Logistic regression is the right default on frozen embeddings.** A tuned MLP is +0.3 points on average,
-  an RBF SVM −0.9, kNN −6.5; an automatic architecture search mostly picks a linear model.
-- **Combine embeddings with TF-IDF.** The probability ensemble beats LogReg on 13 of 18 datasets (+3.5 points on
+  an RBF SVM −0.9, kNN −6.5; an automatic architecture search mostly settles on shallow networks.
+- **Combine embeddings with TF-IDF.** The probability ensemble beats LogReg by more than 0.5 points on 13 of 18 datasets (+3.5 points on
   average) without GPU training, and matches or beats LoRA fine-tuning on 4 of 6.
 - **Best jina-based model: fine-tuned jina + TF-IDF** (+4.8 points over frozen LogReg on average). After fine-tuning,
-  the classifier on top no longer matters: LogReg, SVM and MLP on the fine-tuned embeddings equal the linear head.
+  the classifier on top no longer matters: LogReg, SVM and MLP on the fine-tuned embeddings are within about 1 point of the linear head.
 - **German: gbert-large fine-tuned in full beat LoRA-fine-tuned jina** on all three German datasets (1–3 points).
 - **Many classes (300+): frozen embeddings alone are not enough.** On 342 food categories and 408 patent classes,
   TF-IDF and the ensembles are 4–16 points ahead of LogReg.

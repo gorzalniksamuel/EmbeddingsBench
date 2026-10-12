@@ -6,16 +6,16 @@ Status: results as of 12 October 2026, 11:00 UTC. Fine-tuning of the remaining 1
 
 ## Key findings
 
-1. **Logistic regression is the right default on frozen embeddings.** Across 18 datasets a tuned MLP is on average +0.3 points better (median 0.0), an RBF SVM −0.9, kNN −6.5. A 40-trial MLP architecture search most often picks a linear model.
-2. **The cheapest real gain is an ensemble with TF-IDF.** Averaging LogReg probabilities with a word-n-gram TF-IDF SVM beats LogReg on 13 of 18 datasets, +3.5 points on average, with no GPU training. It matches or beats LoRA fine-tuning on 4 of the 6 datasets where both were run.
+1. **Logistic regression is the right default on frozen embeddings.** Across 18 datasets a tuned MLP is on average +0.3 points better (median 0.0), an RBF SVM −0.9, kNN −6.5. A 40-trial MLP architecture search mostly settles on shallow networks (depth 0–1 on 13 of 18 datasets) whose gain over LogReg is within noise.
+2. **The cheapest real gain is an ensemble with TF-IDF.** Averaging LogReg probabilities with a word-n-gram TF-IDF SVM beats LogReg by more than 0.5 points on 13 of 18 datasets, +3.5 points on average, with no GPU training. It matches or beats LoRA fine-tuning on 4 of the 6 datasets where both were run.
 3. **The best jina-based classifier is fine-tuned jina + TF-IDF**: +4.8 points over frozen LogReg on average (Yahoo! 72.9 %, arXiv 88.6 %, 20 Newsgroups 75.6 %, 10kGNAD 89.9 %). Fine-tuning and lexical features are complementary.
-4. **After fine-tuning, the classifier on top no longer matters.** LogReg, RBF SVM and a tuned MLP on the fine-tuned encoder's embeddings land within about 1 point of its jointly trained linear head (the MLP search again chose a linear model on all six datasets). kNN trails LogReg by up to 20 points on frozen embeddings, but only by 0–6 points after fine-tuning, because fine-tuning pulls each class together.
-5. **For German, a German-native encoder fine-tuned in full is stronger.** `gbert-large` beat LoRA-fine-tuned jina on all three German datasets: 10kGNAD 91.5 vs 88.6 % (89.9 % with TF-IDF), Amazon reviews 64.7 vs 63.6 %, MASSIVE 88.0 vs 87.0 %. It needed only about 20 min and 3.7 GB of GPU memory per dataset (8-bit AdamW).
+4. **After fine-tuning, the classifier on top no longer matters.** LogReg, RBF SVM and a tuned MLP on the fine-tuned encoder's embeddings land within about 1 point of its jointly trained linear head (the MLP search chose a linear model on all six datasets). kNN trails LogReg by up to 20 points on frozen embeddings, but only by 0–6 points after fine-tuning, because fine-tuning pulls each class together.
+5. **For German, a German-native encoder fine-tuned in full is stronger.** `gbert-large` beat LoRA-fine-tuned jina on all three German datasets: 10kGNAD 91.5 vs 88.6 % (89.9 % with TF-IDF), Amazon reviews 64.7 vs 63.6 %, MASSIVE 88.0 vs 87.0 %. It needed 21–42 min of training and under 4 GiB of GPU memory per dataset (8-bit AdamW).
 6. **Frozen embeddings struggle with many fine-grained classes.** With 342 food categories (Open Food Facts DE) LogReg reaches 44.9 % while TF-IDF reaches 57.8 % and the ensemble with character n-grams 60.6 %. For 408 patent classes (HUPD): 50.2 / 52.3 / 54.3 %. Intent datasets with 60–150 classes are the exception (87–95 %), because their classes differ in meaning, not in vocabulary.
 7. **Long, technical or legal texts favour lexical features.** On Swiss court decisions, arXiv and LEDGAR, TF-IDF alone beats LogReg on frozen embeddings by 3–7 points and is within 1.5 points of the best method.
 8. **Class weighting buys rare-class recall; the price grows with the number of classes.** Tail recall (the third of classes with the fewest training examples): MTOP 27.9 → 36.8 % at equal accuracy, Swiss decisions 79.4 → 87.7 % (−1.5 points accuracy), Open Food Facts 36.4 → 46.8 % (−2.4), HUPD 12.6 → 29.8 % (−5.9).
 9. **Zero-shot (label-name similarity) only works when label names are descriptive**: 91 % on emotions, 82 % on banking intents, under 10 % on legal areas, patents and product categories.
-10. **2,048-token input only matters when most texts are long** (Swiss decisions +2.2, 10kGNAD +0.9, arXiv +0.5 points vs 512 tokens); for fine-tuning, head + tail truncation helped more than 1,024 tokens (10kGNAD 89.6 vs 88.8 %). **Matryoshka truncation to 512 dimensions costs 1.1 points on average** (at most 3.1), 256 dimensions 2.9 points.
+10. **2,048-token input only matters when most texts are long** (Swiss decisions +2.2, 10kGNAD +0.9, arXiv +0.5 points vs 512 tokens); for fine-tuning, head + tail truncation helped more than 1,024 tokens (10kGNAD 89.6 vs 88.8 %). **Matryoshka truncation to 512 dimensions costs 1.1 points on average** (at most 3.1), 256 dimensions 2.8 points.
 
 ## Setup
 
@@ -97,7 +97,7 @@ Test accuracy difference to LogReg on frozen embeddings, in points:
 | kNN | -6.5 | -5.3 | 0 | 18 |
 | Zero-shot | -39.9 | -40.9 | 0 | 18 |
 
-- **LogReg vs MLP:** the embeddings are already linearly separable where they separate at all. MLPs win by 1–2 points only on a few datasets with larger training sets (LEDGAR +2.6 tuned, Medical abstracts +1.1) and lose on small or many-class sets; the search mostly chose depth 0.
+- **LogReg vs MLP:** the embeddings are already linearly separable where they separate at all. A tuned MLP gains more than 0.5 points on only 5 of 18 datasets (most on LEDGAR, +2.6) and small amounts on the many-class sets (Open Food Facts +1.5, HUPD +0.6, Swiss decisions +0.5). The search chose depth 0 on 4 datasets, depth 1 on 9, depth 2–3 on 5.
 - **RBF SVM:** never clearly better than LogReg, slower to train (a 30k subsample was needed above 30k training texts) and on Open Food Facts 9 points worse.
 - **kNN:** competitive on intents and emotions (within 0.5 points of LogReg on Banking77, MTOP, MASSIVE, Emotion), weak on topical and many-class data (−18 points on Yahoo!, −19 on Open Food Facts).
 - **Zero-shot:** useful as a no-label starting point only where label names describe the class well.
@@ -147,7 +147,7 @@ Does it pay to run the classifier sweep again after fine-tuning? The fine-tuned 
 | arXiv papers | 75.7 | 82.9 | 82.5 | 83.7 | 85.5 | 85.6 | 85.9 | 86.0 | 86.6 | – |
 | 20 Newsgroups | 46.2 | 65.7 | 64.0 | 65.5 | 71.8 | 71.8 | 71.9 | 72.1 | 72.7 | – |
 
-- LogReg, RBF SVM and MLP on the fine-tuned embeddings end up within about 1 point of the fine-tuned linear head; none is consistently better. kNN is level on MASSIVE, 20NG and arXiv, but 3–6 points lower on Amazon and Yahoo!. The MLP search picked a linear model on all six datasets. **Keep the jointly trained linear head.**
+- LogReg, RBF SVM and MLP on the fine-tuned embeddings end up within about 1 point of the fine-tuned linear head; none is consistently better. kNN is level on MASSIVE, 20NG and arXiv, about 1 point lower on 10kGNAD, and 3–6 points lower on Amazon and Yahoo!. The MLP search picked a linear model on all six datasets. **Keep the jointly trained linear head.**
 - kNN profits most from fine-tuning (+13 to +26 points over frozen kNN on 10kGNAD, Yahoo! and 20NG). It becomes a reasonable choice when classes change often, since new labelled examples can be added without retraining. On sentiment (Amazon) it stays weakest.
 - Caveat: the encoder saw the training texts, so the training embeddings are tighter than unseen ones; the test texts were never seen.
 
@@ -225,14 +225,14 @@ Accuracy / balanced accuracy / macro-F1 / tail recall in % (tail recall: recall 
 - **Class-weighted LogReg** raises tail recall on every dataset: LEDGAR +2.8, MTOP +8.9, Swiss decisions +8.3, Open Food Facts +10.4, HUPD +17.2 points. The cost in accuracy grows with the number of classes and the imbalance (0 on MTOP and LEDGAR, −1.5 Swiss, −2.4 Open Food Facts, −5.9 HUPD).
 - **Logit adjustment** (subtracting τ · log prior at prediction time) is free to apply after training. τ is chosen on validation: τ = 0 (no change) on LEDGAR, Swiss and Open Food Facts; on MTOP and HUPD it improves balanced accuracy (+5.2, +5.3 points); on HUPD at a much smaller accuracy cost than weighting (−1.4 vs −5.9 points).
 - **MLP with weighted loss or balanced batches** gives the highest tail recall of the embedding classifiers on Open Food Facts and HUPD, again at the cost of accuracy.
-- TF-IDF is strongest on rare classes in the legal and product datasets, but on MTOP (1175:1, short texts) it is weakest: 16 % tail recall.
+- TF-IDF and the ensemble lead on rare classes on LEDGAR (77.4 %) and Open Food Facts (53.4 / 53.9 %); on Swiss decisions the class-weighted embedding classifiers are ahead (87.7–88.2 vs 83.9 %), and on MTOP (1175:1, short texts) TF-IDF is weakest: 16 % tail recall.
 - Class-weighted and logit-adjusted *fine-tuning* on MTOP and Swiss decisions is running.
 
 ## Input length and embedding size
 
 ![2,048 vs 512 tokens and Matryoshka dimensions](figures/tokens_and_dimensions.png)
 
-The longer window helps only in proportion to how many texts exceed 512 tokens. Matryoshka truncation: 512 dimensions −1.1 points on average (worst −3.1), 256 −2.9, 128 −5.5. The loss below 256 dimensions varies widely between datasets (see the figure).
+The longer window helps only in proportion to how many texts exceed 512 tokens. Matryoshka truncation: 512 dimensions −1.1 points on average (worst −3.1), 256 −2.8, 128 −5.2. The loss below 256 dimensions varies widely between datasets (see the figure).
 
 ## Cost
 
